@@ -25,7 +25,29 @@ Verified live on **Moto G Power 5G (2024) Tracfone (`XT2415V` / `cancunn`)**, bu
 * **Baseband:** `MT6855N_TC2_SP_V44_P47_05_126R`
 * **Stock Trimmed `md1img`:** `69,540,448` bytes (`SHA-256: 88867cb9305f09412f544fa2b40d92c4917a2939ec04de2366bddfe89155ce3f`)
 * **Patched Signed `md1img`:** `69,540,544` bytes (`SHA-256: 3c597444764b56a4b7d052700c0687bf0a14d7d6ec128330640dead6977c9c64`)
+---
+## Warning, Disclaimer & Safety Rules
 
+> **⚠️ WARNING — BRICK RISK & YMMV (Your Mileage May Vary):**
+> * Flashing modem partitions via `fastboot` (including the `flash` and `revert` subcommands) **carries an inherent risk of soft-bricking or hard-bricking your device**, especially on untested models, carrier variants, or firmware builds.
+> * **Use at your own risk.** While `unlock_modem.py` includes automated `flash` and `revert` wrappers with active-slot and integrity checks, **it is strongly recommended to either execute the `fastboot` commands manually after verifying `current-slot` and `securestate` yourself, or use the automated `flash` / `revert` steps with extreme caution.**
+> * Results are strictly **YMMV** — live hardware verification applies only to `XT2415V` (`cancunn`, build `V1UDS35H.26-14-6-2-11`), and behavior on other devices or future OTAs is not guaranteed.
+
+* **Never flash** `preloader`, `gpt`, `lk`, `efuse`, `seccfg`, `nvram`, `nvdata`, `protect1`, `protect2`, or the inactive modem slot.
+* Always keep your verified stock backup (`backups/*_stock_trimmed.img`) safe before flashing anything.
+* **Manual `fastboot` commands** (if you prefer not to use the automated `flash` / `revert` wrappers):
+  ```bash
+  fastboot getvar current-slot
+  fastboot getvar securestate        # Must be: flashing_unlocked
+
+  # Replace <a|b> with your active slot (e.g., md1img_a or md1img_b):
+  fastboot flash md1img_<a|b> work/md1img_<profile_id>_patched.signed.img
+
+  # To revert manually to stock:
+  fastboot flash md1img_<a|b> backups/<device>_md1img_<a|b>_stock_trimmed.img
+
+  fastboot reboot
+  ```
 ---
 
 ## Quick Start (Default `cancunn` Profile)
@@ -114,12 +136,6 @@ When working with a different device, carrier build, or newer OTA:
 ```bash
 python unlock_modem.py audit work/md1img_cancunn_patched.signed.img
 ```
-
----
-
-## Safety Rules
-* **Never flash** `preloader`, `gpt`, `lk`, `efuse`, `seccfg`, `nvram`, `nvdata`, `protect1`, `protect2`, or the inactive modem slot.
-* Always keep your `backups/*_stock_trimmed.img` safe before flashing.
 
 ---
 
