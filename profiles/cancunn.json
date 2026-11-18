@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "cancunn",
+  "label": "Moto G Power 5G (2024) XT2415V — MT6855N, build V1UDS35H.26-14-6-2-11",
+  "build_id": "V1UDS35H.26-14-6-2-11",
+  "status": "verified-live",
+  "models": ["moto g power 5G - 2024", "cancunn"],
+  "skus": ["XT2415V"],
+  "baseband_substr": "MT6855N_TC2_SP_V44_P47_05_126R",
+  "baseband_alt": [],
+  "securestate": "flashing_unlocked",
+  "stock_md1img": {
+    "size": 69540448,
+    "sha256": "88867cb9305f09412f544fa2b40d92c4917a2939ec04de2366bddfe89155ce3f"
+  },
+  "known_signed_sha256": "3c597444764b56a4b7d052700c0687bf0a14d7d6ec128330640dead6977c9c64",
+
+  "never_flash": ["preloader", "gpt", "pgpt", "lk", "efuse", "efuseBackup",
+    "seccfg", "nvram", "nvdata", "protect1", "protect2"],
+
+  "modem_unlock": {
+    "slot": "auto",
+    "patches": [
+      {"label": "force-legal", "offset": "0x254696", "old": "131e2412", "new": "01d2e0db",
+       "why": "custom_check_link_sml_legal_sim_rule entry returns LEGAL(1). CATI VA 0x90254496."},
+      {"label": "sl-check-force", "offset": "0x264c16", "old": "491e0821", "new": "01d2e0db",
+       "why": "sml_sl_Check entry returns pass(1). CATI VA 0x90264a16."},
+      {"label": "gate-e6ba", "offset": "0xcab124", "old": "90c83e09", "new": "08900890",
+       "why": "BNEIC a0,1 early gate (+0x196 in smu_check_sml) -> fall through."},
+      {"label": "gate-e6e2", "offset": "0xcab152", "old": "d0cbf208", "new": "08900890",
+       "why": "BNEIC s8,1 per-cat verdict (+0x1c4 in smu_check_sml) -> fall through."},
+      {"label": "gate-e6e8", "offset": "0xcab158", "old": "f0c8fa0a", "new": "08900890",
+       "why": "BNEIC a3,1 status-byte gate (+0x1ca in smu_check_sml) -> fall through."},
+      {"label": "gate-e6f0", "offset": "0xcab160", "old": "90c80808", "new": "08900890",
+       "why": "BNEIC a0,1 cat-choice gate (+0x1d2 in smu_check_sml) -> fall through."},
+      {"label": "gate-e6f4", "offset": "0xcab164", "old": "40ca0438", "new": "08900890",
+       "why": "BEQIC s2,7 cat-accounting gate (+0x1d6 in smu_check_sml) -> fall through."},
+      {"label": "gate-e6f8", "offset": "0xcab16a", "old": "108aee3a", "new": "08900890",
+       "why": "BEQC verdict-zero gate (+0x1dc in smu_check_sml) -> fall through."}
+    ]
+  },
+
+  "verify": {
+    "remain_must_stay": "5",
+    "ee_must_stay": "0",
+    "sim_state_unlocked": "LOADED",
+    "sim_state_locked": "NETWORK_LOCKED"
+  }
+}

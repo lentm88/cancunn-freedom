@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "id": "vegas",
+  "label": "Moto G Power (2026) XT2617V — MT6835O, build W1WEOS36.48-22-3-3-4-2",
+  "build_id": "W1WEOS36.48-22-3-3-4-2",
+  "status": "verified-live",
+  "models": ["moto g power - 2026", "vegas", "GMS on ARM64"],
+  "skus": ["XT2617V"],
+  "baseband_substr": "MT6835O_NR17.RC.MP.V18.6.6.P107.02.309R",
+  "baseband_alt": [],
+  "securestate": "flashing_unlocked",
+  "stock_md1img": {
+    "size": 76088352,
+    "sha256": "dab9e69e3bbb009dd2a7907f3603df101e15b11c3f34e1461745b1699c7d4757"
+  },
+
+  "never_flash": ["preloader", "gpt", "pgpt", "lk", "efuse", "efuseBackup",
+    "seccfg", "nvram", "nvdata", "protect1", "protect2", "md1img_b"],
+
+  "flash_plan": [
+    {"partition": "system", "slot_suffix": true, "source_key": "system_gsi",
+     "magic": "sparse-or-ext4", "note": "Lineage/GSI system image."},
+    {"partition": "vbmeta", "slot_suffix": true, "source_key": "vbmeta_a",
+     "magic": "avb", "note": "Disabled-verification vbmeta set (both slots)."}
+  ],
+
+  "root": {
+    "method": "kernelsu-or-magisk",
+    "manager_package": "com.rifsxd.ksunext",
+    "manager_package_alt": ["me.weishu.kernelsu", "com.topjohnwu.magisk"],
+    "stock_partition": "init_boot",
+    "su_probe": "su -c id",
+    "su_ok_marker": "uid=0",
+    "notes": [
+      "Patch init_boot ON DEVICE in the manager app, then flash the produced image.",
+      "vbmeta must stay in the disabled state or init_boot flashes fail validation."
+    ]
+  },
+
+  "modem_unlock": {
+    "slot": "auto",
+    "patches": [
+      {"label": "force-legal", "offset": "0x727e56", "old": "141e4412", "new": "01d2e0db",
+       "why": "custom_check_link_sml_legal_sim_rule entry returns LEGAL(1). CATI VA 0x90727c56."},
+      {"label": "sl-check-force", "offset": "0x738bfc", "old": "491e0821", "new": "01d2e0db",
+       "why": "sml_sl_Check entry returns pass(1). CATI VA 0x907389fc."},
+      {"label": "gate-e6ba", "offset": "0x1a14a5c", "old": "90c89c08", "new": "08900890",
+       "why": "BNEIC a0,1 early gate -> fall through (decode-verified)."},
+      {"label": "gate-e6e2", "offset": "0x1a14a84", "old": "70ca5b0f", "new": "08900890",
+       "why": "BNEIC s3,1 per-cat verdict -> fall through (decode-verified)."},
+      {"label": "gate-e6e8", "offset": "0x1a14a8a", "old": "f0c87009", "new": "08900890",
+       "why": "BNEIC a3,1 status-byte gate -> fall through (decode-verified)."},
+      {"label": "gate-e6f0", "offset": "0x1a14a92", "old": "90c87008", "new": "08900890",
+       "why": "BNEIC a0,1 cat-choice gate -> fall through (decode-verified)."},
+      {"label": "gate-e6f4", "offset": "0x1a14a96", "old": "a0ca6c38", "new": "08900890",
+       "why": "BEQIC s5,7 cat-accounting gate -> fall through (decode-verified)."},
+      {"label": "gate-e6f8", "offset": "0x1a14a9a", "old": "608ae000", "new": "08900890",
+       "why": "BEQC zero,s3 verdict-zero gate -> fall through (decode-verified)."}
+    ]
+  },
+
+  "verify": {
+    "remain_must_stay": "5",
+    "ee_must_stay": "0",
+    "sim_state_unlocked": "LOADED",
+    "sim_state_locked": "NETWORK_LOCKED"
+  }
+}

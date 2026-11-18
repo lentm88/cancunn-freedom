@@ -1,294 +1,134 @@
-# vegas-freedom
+# cancunn-freedom
 
-Bootloader unlock and SIM/network unlock scripts for the **Motorola Moto G Power 2026 (`XT2617V` / `vegas`)**.
+Modem-only (`md1img`) SIM-lock evaluation patcher, microMIPS32 pattern scanner, CERT2 signer, and active-slot flash/revert tool for MediaTek-based Motorola devices.
 
-## Supported Device and Starting State
+Verified live on **Moto G Power 5G (2024) Tracfone (`XT2415V` / `cancunn`)**, build **`V1UDS35H.26-14-6-2-11`** (`MT6855N` / `NR15.R3.TC2`).
 
-Only tested on this exact Tracfone firmware build. Newer OTA updates may change `lk` or `md1img` offsets and break these steps:
-
-- **Model / SKU / Carrier:** `moto g power - 2026` (`vegas26`) / `XT2617V` / `tracfone`
-- **Android / Security Patch:** Android `16` / `2026-04-01`
-- **Build ID (`ro.build.display.id`):** `W1WEOS36.48-22-3-3-4-2`
-- **Baseband (`gsm.version.baseband`):** `MT6835O_NR17.RC.MP.V18.6.6.P107.02.309R`
-- **Stock active slot:** `_a`
-
-This guide assumes your device is already:
-
-1. Running `W1WEOS36.48-22-3-3-4-2`.
-2. Activated or activation-bypassed.
-3. Rooted using **DirtyFrag** + **KernelSU**.
-
-**Factory / Rescue Firmware:** If you have a stock factory/rescue firmware package for `W1WEOS36.48-22-3-3-4-2` containing `lk` (`lk.img`/`lk.bin`) and `md1img` (`md1img.img`/`md1img.bin`) you can skip DirtyFrag, KernelSU, and Step 1, and pass those extracted files directly to Step 2 and Step 3. 
-
-## Disclaimer
-
-> Your warranty is now void. You are choosing to make these modifications—I am not responsible for bricked devices, data loss, carrier/service issues, or damaged hardware. Intended strictly for devices you own; no proprietary Motorola/MediaTek firmware binaries, serial numbers, or OEM signing keys are included in this repository.
-
-## Safety Warnings
-
-- **Unlocking the bootloader wipes `userdata`.** Back up any personal data first.
-- **Only flash `lk` (active slot `lk_a`) and `md1img_a`.** Never flash `md1img_b`, `preloader`, `gpt`, `pgpt`, `efuse`, `seccfg`, `nvram`, `nvdata`, `protect1`, `protect2`, or `persist`.
-- **Do not re-flash stock `lk` after unlocking** (`seccfg` / verified boot behavior depends on the unlock flow; keeping your stock backup offline is for recovery reference only).
-- Leave files under `backups/` untouched; generated files are written to `work/`.
+> **Credits & Upstream Projects:**
+> Built upon the open-source research, auditing, and CERT2 signing tools from:
+> * [andrewwm/vegas-freedom](https://github.com/andrewwm/vegas-freedom) (GNU AGPL-3.0)
+> * [Articfox291/kansas-modem-unlock](https://github.com/Articfox291/kansas-modem-unlock) (MIT)
 
 ---
 
-## Requirements
-
-Install these on your PC before starting:
-
-1. **Python 3.10+** (tested on Python `3.12.10`)
-2. **Python packages** (required by `bootloader/` scripts; `scripts/` and `modem/` use stdlib only):
-   - `capstone>=5.0,<6.0`
-   - `pyasn1>=0.5.0`
-3. **Android SDK Platform Tools** (`adb` and `fastboot` on `PATH`)
-4. **Motorola USB Drivers** (Windows: install Motorola Mobile Drivers / Motorola Device Manager so Windows detects both `adb` and `fastboot` interfaces)
-5. **~13 GB free disk space** on PC for a full stock partition dump (~12.5 GB across 96 files, including `super.img`)
-
-Install Python dependencies from the repo root (`vegas-freedom/`):
-
-```bash
-pip install -r requirements.txt
-```
-
-Verify PC tools:
-
-```bash
-python --version
-adb version
-fastboot --version
-```
+## Prerequisites
+* **Bootloader already unlocked** (`fastboot getvar securestate` -> `flashing_unlocked`)
+* **Root access** (`adb shell su`) for dumping the live `md1img` partition
+* Python 3.9+ (standard library only; no external `pip` packages required)
+* `adb` and `fastboot` in your system `PATH`
 
 ---
 
-## Phone Setup: USB Debugging and KernelSU Shell Root
-
-1. Enable Developer Options: **Settings -> About phone -> tap Build number 7 times**.
-2. Enable USB Debugging: **Settings -> System -> Developer options -> USB debugging** -> **ON**.
-3. Connect the phone to your PC via USB, run:
-
-   ```bash
-   adb devices
-   ```
-
-   Tap **Allow** (`Always allow from this computer`) on the phone's RSA prompt so `adb devices` lists `device` (not `unauthorized`).
-4. Grant root to `adb shell` in KernelSU:
-   - Open the **KernelSU** app on the phone.
-   - Open the **Superuser** tab.
-   - Enable superuser access for **`Shell`**.
-5. Confirm root works over ADB:
-
-   ```bash
-   adb shell su -c id
-   ```
-
-   Expected output contains `uid=0(root)`.
+## Verified Device Profile (`profiles/cancunn.json`)
+* **Model / SKU:** Moto G Power 5G (2024) / `XT2415V` (`cancunn`)
+* **Build ID:** `V1UDS35H.26-14-6-2-11`
+* **Baseband:** `MT6855N_TC2_SP_V44_P47_05_126R`
+* **Stock Trimmed `md1img`:** `69,540,448` bytes (`SHA-256: 88867cb9305f09412f544fa2b40d92c4917a2939ec04de2366bddfe89155ce3f`)
+* **Patched Signed `md1img`:** `69,540,544` bytes (`SHA-256: 3c597444764b56a4b7d052700c0687bf0a14d7d6ec128330640dead6977c9c64`)
 
 ---
 
-## Step 1: Back Up All Stock Partitions
+## Quick Start (Default `cancunn` Profile)
 
-Run the cross-platform Python backup script (recommended on Windows, macOS, and Linux):
-
+### 1. Check Active Slot & Device Status
+Shows current active slot (`_a` or `_b`), device SKU, baseband, SIM state, and matching profiles:
 ```bash
-python scripts/backup_partitions.py
+python unlock_modem.py status
 ```
 
-*(Git Bash / Linux alternative: `bash scripts/backup_partitions.sh`. Do not use PowerShell `>` redirection manually with `adb exec-out`, as PowerShell corrupts binary dumps.)*
-
-What this saves into `backups/stock_YYYYMMDD_HHMMSS/`:
-
-- All unique partitions under `/dev/block/by-name/` (skips `userdata` and whole-disk `sdc`), verified via on-device `sha256sum`
-- `gpt_sdc_head_1M.bin` and `gpt_sdc_tail_1M.bin`
-- `getprop.txt`, `partitions_by-name.txt`, `proc_partitions.txt`, `name_map.txt`, `SHA256SUMS`
-
-Note the output folder name (referred to as `<BACKUP_DIR>` below, e.g. `stock_20261115_120000`) and confirm `lk_a.img` and `md1img_a.img` are present inside `backups/<BACKUP_DIR>/`.
-
-Optional build check before patching:
-
+### 2. Dump Stock `md1img` from Active Slot (`_a` or `_b`)
+Automatically detects `ro.boot.slot_suffix`, dumps `/dev/block/by-name/md1img_<slot>`, trims trailing `0x00` padding, and verifies MKIMG + CERT2 integrity:
 ```bash
-adb shell getprop ro.build.display.id
+python unlock_modem.py dump
+```
+* Saves raw dump to `backups/<device>_md1img_<slot>_stock.img`
+* Saves trimmed stock backup to `backups/<device>_md1img_<slot>_stock_trimmed.img`
+
+### 3. Check Compatibility
+Verifies structural/CERT2 integrity and locates the 8 patch sites via `md1_dbginfo` CATI symbols + microMIPS32 bitmask spine matching (works across both `NR15` and `NR17` modem branches):
+```bash
+python unlock_modem.py check backups/cancunn_md1img_b_stock_trimmed.img
+```
+
+### 4. Build, Patch, CERT2-Sign, and Audit
+```bash
+python unlock_modem.py build backups/cancunn_md1img_b_stock_trimmed.img
+```
+* Automatically reuses the existing SHA-256-matched trimmed stock backup in `backups/` (avoids duplicate trimmed copies).
+* Saves intermediate raw patched image as `work/modem_work/md1img_<profile_id>_patched.raw.img`.
+* Saves final signed image as `work/md1img_<profile_id>_patched.signed.img`.
+* Verifies `compare_built` (only declared offsets differ) and full `CERT2` integrity (`layout_ok=True integrity=True`).
+
+### 5. Flash to Active Slot Only
+Automatically detects `current-slot` (`a` or `b`) in fastboot, verifies `securestate=flashing_unlocked` and that a matching stock backup exists, then flashes **only** the active slot (`md1img_a` or `md1img_b`):
+```bash
+python unlock_modem.py flash --reboot
+```
+
+### 6. Verify After Boot
+```bash
 adb shell getprop gsm.version.baseband
+adb shell getprop gsm.sim.state
+adb shell getprop vendor.gsm.sim.slot.lock.device.lock.remain.count
 ```
+Expected: baseband intact, `gsm.sim.state=LOADED`, `remain.count=5`.
 
-Expected: `W1WEOS36.48-22-3-3-4-2` and `MT6835O_NR17.RC.MP.V18.6.6.P107.02.309R`.
-
----
-
-## Step 2: Patch `lk` and Unlock Bootloader
-
-1. Generate and CERT-verify the unlock-capable `lk` image from your stock `lk_a.img` backup:
-
-   ```bash
-   python bootloader/patch_lk.py backups/<BACKUP_DIR>/lk_a.img
-   ```
-
-   Output:
-   - File: `work/lk.unlock-serial.img` (`3,477,904` bytes)
-   - Verified `Result: VALID` via `bootloader/tools/verify_mtk_image.py`
-   - On stock `W1WEOS36.48-22-3-3-4-2` `lk_a.img`, SHA-256 is `914acfce78939c61a744294ecb686a0865424c36c397878ab6e919be9513eed1`.
-
-2. Reboot into the bootloader and confirm Fastboot sees the phone:
-
-   ```bash
-   adb reboot bootloader
-   fastboot devices
-   ```
-
-   If `fastboot devices` prints nothing on Windows, verify **Motorola USB Drivers** are installed and check Device Manager while the phone is in bootloader mode.
-
-3. Flash `work/lk.unlock-serial.img` to active slot `lk` (`lk_a`) and reboot back into the bootloader so the patched `lk` loads:
-
-   ```bash
-   fastboot flash lk work/lk.unlock-serial.img
-   fastboot reboot bootloader
-   ```
-
-4. Read `serialno`, generate your 20-character unlock key, and run `oem unlock`:
-
-   ```bash
-   fastboot getvar serialno
-   python bootloader/lk_keygen.py --secret Valeria --serialno <SERIALNO> --count 1
-   fastboot oem unlock <KEY>
-   ```
-
-   Confirm the unlock prompt on the phone screen if shown (Volume keys + Power). The device will wipe `userdata`.
-
-5. Verify bootloader unlock state (in bootloader):
-
-   ```bash
-   fastboot getvar securestate
-   ```
-
-   Expected: `securestate: flashing_unlocked`.
-
----
-
-## Step 3: Build and Flash Network-Unlocked Modem (`md1img_a`)
-
-Use the **stock `md1img_a.img` dumped in Step 1** (`backups/<BACKUP_DIR>/md1img_a.img`).
-
-1. Build, CERT2-sign, and audit the unlocked modem image:
-
-   ```bash
-   python modem/unlock_vegas.py build backups/<BACKUP_DIR>/md1img_a.img
-   ```
-
-   What this does automatically:
-   - Trims trailing `0x00` partition padding (`209,715,200` -> `76,088,352` bytes) and saves the trimmed stock copy to `work/modem_work/md1img_stock_trimmed.img`
-   - Verifies stock trimmed SHA-256 (`dab9e69e3bbb009dd2a7907f3603df101e15b11c3f34e1461745b1699c7d4757`)
-   - Applies the 8 verified-live `vegas` patches from `modem/profiles/vegas.json` and runs `compare_built`
-   - Re-signs CERT2 via `modem/sign_mtk_cert.py`
-   - Audits all 23 MKIMG entries (`layout_ok=True integrity=True`)
-   - Writes `work/md1img_vegas_patched.signed.img` (`76,088,448` bytes, SHA-256 `f6bd718ffb5c734cdab9e3c9c8c83987bf8e7b71299adb372cf678940b27046a`)
-
-2. Enter bootloader mode (stay in bootloader from Step 2, or after booting Android, re-enable USB Debugging and run `adb reboot bootloader`):
-
-   ```bash
-   fastboot getvar securestate
-   ```
-
-   Confirm `flashing_unlocked` before flashing.
-
-3. Flash **only `md1img_a`** (never `md1img_b`) and reboot:
-
-   ```bash
-   fastboot flash md1img_a work/md1img_vegas_patched.signed.img
-   fastboot reboot
-   ```
-
-4. Insert a non-Tracfone SIM and verify carrier registration and lock state in Android (with USB Debugging re-enabled):
-
-   ```bash
-   adb shell getprop gsm.sim.state
-   adb shell getprop gsm.sim.operator.alpha
-   adb shell getprop vendor.gsm.sim.slot.lock.device.lock.remain.count
-   ```
-
-   Expected with a non-Tracfone SIM:
-   - `gsm.sim.state`: `LOADED` (or `LOADED,NOT_READY` if a second slot is empty; a locked modem reports `NETWORK_LOCKED`)
-   - `vendor.gsm.sim.slot.lock.device.lock.remain.count`: `5` (unchanged)
-
----
-
-## Reverting Modem to Stock (Optional)
-
-Flash the trimmed stock `md1img_a` generated during Step 3 (`work/modem_work/md1img_stock_trimmed.img`, `76,088,352` bytes):
-
+### 7. Revert to Stock (One Command)
+Detects active slot (`a` or `b`), verifies the stock backup in `backups/` via `audit_image`, and flashes it back:
 ```bash
-adb reboot bootloader
-fastboot flash md1img_a work/modem_work/md1img_stock_trimmed.img
-fastboot reboot
+python unlock_modem.py revert --reboot
 ```
 
 ---
 
-## Checking Newer Firmware or Similar MTK Moto Devices
+## Using a New / Custom Profile (Multi-Device Workflow)
 
-If your device is on a newer OTA build or is a closely related MediaTek Motorola model:
+When working with a different device, carrier build, or newer OTA:
 
-1. **Check `lk` compatibility (dry-run in temp dir, does not write `work/`):**
-
+1. **Dump the stock modem** from the device:
    ```bash
-   python bootloader/patch_lk.py --check <path_to_lk.img>
+   python unlock_modem.py dump
+   ```
+2. **Run `check --emit-profile`** to auto-scan CATI symbols + microMIPS32 bitmask patterns and generate a new profile JSON:
+   ```bash
+   python unlock_modem.py check backups/<device>_md1img_<slot>_stock_trimmed.img --emit-profile profiles/new_device.json
+   ```
+3. **Build** using `--profile`:
+   ```bash
+   python unlock_modem.py build --profile profiles/new_device.json backups/<device>_md1img_<slot>_stock_trimmed.img
+   ```
+4. **Flash** using `--profile` (selects `work/md1img_new_device_patched.signed.img` and verifies the matching stock backup):
+   ```bash
+   python unlock_modem.py flash --profile profiles/new_device.json --reboot
+   ```
+5. **Revert** using `--profile` (selects the exact stock backup in `backups/` matching `new_device.json`'s SHA-256):
+   ```bash
+   python unlock_modem.py revert --profile profiles/new_device.json --reboot
    ```
 
-   `bootloader/` disassembles `lk` dynamically (`capstone`), so `patch_lk.py` can still work across `lk` revisions when `--check` reports `COMPATIBLE` / `LIKELY COMPATIBLE` (`Result: VALID`).
-
-2. **Check `md1img` compatibility (read-only CATI + opcode scan):**
-
-   ```bash
-   python modem/unlock_vegas.py check <path_to_md1img.img>
-   ```
-
-   - Default `build` strictly rejects non-`W1WEOS36.48-22-3-3-4-2` modems to prevent flashing wrong offsets.
-   - `check` reads `md1_dbginfo` (CATI symbol table) inside the modem image, relocates `custom_check_link_sml_legal_sim_rule`, `sml_sl_Check`, and `smu_check_sml`, and checks whether all 8 microMIPS32 instruction signatures exist at unique verified positions.
-   - If `check` reports `CANDIDATE MATCH` (all 8 signatures relocated cleanly) and you choose to test an **unproven/experimental** build at your own risk:
-
-     ```bash
-     python modem/unlock_vegas.py build --experimental-relocate <path_to_md1img.img>
-     ```
-
-     This writes `work/md1img_experimental_patched.signed.img`, logs the relocated table to `work/modem_work/relocated_profile.json`, and keeps `work/modem_work/md1img_stock_trimmed.img` ready to revert. If `check` reports mismatches (`INCOMPATIBLE`), do not flash.
+> **Multi-image safety:** If multiple `.signed.img` or stock backups exist in `work/` or `backups/` and `--profile` is omitted, `flash` and `revert` attempt to match the connected device via ADB/Fastboot properties and will refuse to proceed if the target image is ambiguous.
 
 ---
 
-## Repository Layout
-
-```text
-vegas-freedom/
-├── README.md
-├── LICENSE
-├── LICENSE-NOTICE.md
-├── requirements.txt
-├── scripts/
-│   ├── backup_partitions.py
-│   └── backup_partitions.sh
-├── bootloader/
-│   ├── LICENSE
-│   ├── ACKNOWLEDGEMENTS.md
-│   ├── patch_lk.py
-│   ├── lk_auto_patch.py
-│   ├── lk_keygen.py
-│   ├── lk_patch_partition.py
-│   ├── lk_repack_signed.py
-│   ├── lk_static_analyzer.py
-│   ├── liblk/
-│   └── tools/
-└── modem/
-    ├── LICENSE
-    ├── unlock_vegas.py
-    ├── imageaudit.py
-    ├── sign_mtk_cert.py
-    ├── parse_mtk_certs.py
-    ├── verify_mtk_image.py
-    └── profiles/
-        └── vegas.json
+## Audit Any `md1img` File Standalone
+```bash
+python unlock_modem.py audit work/md1img_cancunn_patched.signed.img
 ```
 
-## Credits and Licenses
+---
 
-- **Repository License ([LICENSE](LICENSE)):** GNU Affero General Public License v3.0 (**AGPL-3.0**) to cover combined redistribution with `bootloader/`.
-- **Bootloader unlock (`bootloader/`):** Adapted from [crabcakes97/Valhalla](https://github.com/crabcakes97/Valhalla) (built on [Maikyxd/val-protocol](https://github.com/Maikyxd/val-protocol), `AGPL-3.0`, and [R0rt1z2/liblk](https://github.com/R0rt1z2/liblk), `GPL-3.0-or-later`). See [bootloader/LICENSE](bootloader/LICENSE) and [bootloader/ACKNOWLEDGEMENTS.md](bootloader/ACKNOWLEDGEMENTS.md).
-- **Modem unlock (`modem/`):** Adapted from [Articfox291/kansas-modem-unlock](https://github.com/Articfox291/kansas-modem-unlock) with the verified `vegas` patch profile (`MIT`, see [modem/LICENSE](modem/LICENSE)).
-- See [LICENSE-NOTICE.md](LICENSE-NOTICE.md) for details.
+## Safety Rules
+* **Never flash** `preloader`, `gpt`, `lk`, `efuse`, `seccfg`, `nvram`, `nvdata`, `protect1`, `protect2`, or the inactive modem slot.
+* Always keep your `backups/*_stock_trimmed.img` safe before flashing.
+
+---
+
+## License & Modifications
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**, following upstream [andrewwm/vegas-freedom](https://github.com/andrewwm/vegas-freedom). Helper modules originally from [Articfox291/kansas-modem-unlock](https://github.com/Articfox291/kansas-modem-unlock) retain their original MIT copyright notices.
+
+**Summary of modifications in `cancunn-freedom` (2026-11):**
+* Removed bootloader/GSI components to focus exclusively on modem (`md1img`) workflows (`unlock_modem.py`).
+* Added `profiles/cancunn.json` for Moto G Power 5G 2024 `XT2415V` (`MT6855N`, build `V1UDS35H.26-14-6-2-11`).
+* Added microMIPS32 bitmask spine scanning in `smu_check_sml` to support both `NR15` and `NR17` modem branches (`--emit-profile`).
+* Updated `imageaudit.py` (`compare_built`) to permit declared patch entries where individual bytes happen to equal their replacement value (e.g., `0xcab162` in `cancunn`).
+* Added dynamic A/B active slot detection, per-command subprocess timeouts, stock-trimmed backup reuse, profile-scoped `modem_work` outputs, and multi-profile safe `flash` / `revert` commands.
